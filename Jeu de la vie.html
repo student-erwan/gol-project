@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <header>
+        <title>Game of Life</title>
+
+        <style>
+            table {
+                border-collapse: collapse;
+                margin: 20px auto;
+            }
+            td {
+                width: 30px;
+                height: 30px;
+                border: 1px solid #000;
+            }
+            .black {
+                background-color: black;
+            }
+            .white {
+                background-color: white;
+            }
+            button {
+                font-size: 20px;
+                padding: 10px 20px;
+                cursor: pointer;
+            }
+
+            #divmenu{
+                display: grid;
+                grid-template: 20% repeat(8,10%)/repeat(3,1fr);
+            }
+            #menuleft1{
+                grid-area: 2/1/auto/1;
+            }
+            #menucenter1{
+                grid-area: 1/2/auto/2;
+            }
+
+            #menucenter3 {
+                grid-area: 9 / 2 / auto / 2;
+                margin: auto;
+                margin-top: 20px;
+            }
+            #container {
+                display: flex;
+                flex-direction: column; 
+                align-items: center;    
+                grid-area: 2/2/auto/2;
+                margin: auto;
+            }
+
+            #menucenter2 {
+                margin-bottom: 20px; 
+            }
+
+            #menucenter4 {
+                width: 100%;          
+                display: flex;
+                justify-content: center;     
+                gap: 10px;                   
+                margin-top: 10px; 
+            }
+            
+            #rules-modal{
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 1000;
+            }       
+            
+            #rules-content{
+                background-color: white;
+                padding: 20px;
+                border-radius: 10px;
+                width: 50%;
+                text-align: center;
+                font-size: 18px;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            }
+        </style>
+
+    </header>
+       
+</head>
+    <body id="body" onload="menu()">
+        <div id= "game-container">
+            <h1 style="text-align: center;font-size:60px;">Game of Life</h1>
+
+            <div class="stats">
+                <p style="font-size: 20px;">Generation : <span id="generation">0</span></p>
+                <p style="font-size: 20px;">Population : <span id="population">0</span></p>
+            </div>
+
+            <div id="table-container" style="text-align: center;"></div>
+
+            <div style="text-align: right; margin: 20px;">
+                <button id="button-play">PLAY</button>
+                <button id="button-before"><</button>
+                <button id="button-next">></button>
+                <button id="button-retour">Back</button>
+                
+            </div>
+        </div>
+    </body>
+
+    <footer>
+        <script> //java script
+            class Game {
+
+                /*
+                this class refers to the logical part of the game 
+                It requires :
+                - a starting grid (bool array array)
+                - its height (int)
+                - its width (int)
+                - the original population of the simulation (int) (i.e. the number of 'true' in the starting grid)
+            
+                It gave to the coders an access to :
+                - All the previous and next state of the simulation (grid : bool array array)
+                - the population (int)
+                - the index of the current state (int)
+                */
+            
+            
+                /* initialize a n*m matrix fill by 'value' */
+                static init_matrix(n, m, value) {
+                    let matrix = new Array(n);
+                    for (let k = 0; k<n; k++){
+                        matrix[k] = new Array(m);
+                        for (let l = 0; l<m; l++){
+                            matrix[k][l] = value;
+                        }
+                    }
+                    return matrix;
+                }
+            
+            
+                constructor(height, width, grid, init_pop){
+                    this.height = height;
+                    this.width = width;
+            
+                    // We consider (grid, vertices) as a graph. The edges can be find by interpreting 'grid'
+                    // the groups of alive cells define a graph in our implementation 
+                    this.grid = grid;
+                    this.last_calculated_grid = grid; 
+                    this.vertices = [];
+            
+            
+                    this.states = [[grid, init_pop]];
+                    this.init_vertices();
+            
+                    this.population = init_pop;
+                    this.state = 0;
+                }
+            
+                get_population(){
+                    return this.population;
+                }
+            
+                incr_pop(){
+                    this.population = this.population + 1;
+                }
+            
+                decr_pop(){
+                    this.population = this.population - 1;
+                }
+                
+                /* fill 'this.vertices' with all alive cells */
+                init_vertices () {
+                    this.vertices = [];
+                    for(let i = 0; i < this.height; i++){
+                        for (let j = 0; j < this.width; j++){
+                            if (this.last_calculated_grid[i][j]){
+                                this.vertices.push([i, j]);
+                            }
+                        }
+                    }   
+                }
+            
+                get_neighbours (i, j){
+                    let surroundings = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]]; // all the relatives position of neighbours
+                    let neighbours = [];
+                    for(let k = 0; k<surroundings.length; k++){
+                        let pos = surroundings[k];
+                        // coords of a neighbour
+                        let x = i+pos[0];
+                        let y = j+pos[1];
+                        // checks the bounds
+                        if (x<0 || y < 0 || x >= this.height || y >= this.width){continue}
+                        neighbours.push([x,y]);
+                    }
+                    return neighbours;
+                }
+            
+                get_nb_alive_cells(cells){
+                    let nb_alive_cells = 0;
+                    for (let k =0; k<cells.length; k++){
+                        let x = cells[k][0];
+                        let y = cells[k][1]; 
+                        if (this.last_calculated_grid[x][y]){nb_alive_cells = nb_alive_cells+1}
+                    }
+                    return nb_alive_cells;
+                }
+            
+                /* return the next state */
+                previousGrid(){
+                    console.log("-- call the previous function");
+                    if(this.state != 0){
+                        this.state = this.state - 1;
+                        let previous_grid = this.states[this.state][0];
+                        let previous_pop = this.states[this.state][1];
+                        this.population = previous_pop;
+                        this.grid = previous_grid
+                        return previous_grid;
+                    // We are at the initial state, a previous state doesn't exist
+                    }else{
+                        console.log("Command error : it's impossible to go to the previous grid")
+                        return null
+                    }
+                }
+                
+                /* return the next state 
+                -> it cares about the saved states
+                */
+                nextGrid() {  
+                    console.log("-- call the next function");
+                    // the simulation is at its highest calculated state => need to calculate the new top
+                    if(this.states.length - 1 == this.state){
+                        let new_grid = this.calculateNextGrid();
+                        this.states.push([new_grid, this.get_population()]);
+                        this.state = this.state + 1;
+                        this.grid = this.last_calculated_grid;
+                        return new_grid;
+                    // next state(s) have already been calculated => doesn't need to calculate the next state
+                    }else{
+                        this.state = this.state + 1;
+                        let next_grid = this.states[this.state][0];
+                        let next_pop = this.states[this.state][1];
+                        this.population = next_pop;
+                        this.grid = next_grid;
+                        return next_grid;
+                    }
+                }
+            
+                /* return the next state
+                -> it DOESN'T care about the saved states (cf next_grid)
+                */
+                calculateNextGrid(){
+                    let new_grid = Game.init_matrix(this.height, this.width, false);
+                    let dead_cells = new Map(); // associate to a cell (x, y), an number of dead cells arount it
+                    let visited_vertices = new Array(this.height*this.height).fill(false);
+                    let new_vertices = []
+            
+                    // we force to browse all the vertices of the graph
+                    for (let k = 0; k<this.vertices.length; k++){
+                        let i = this.vertices[k][0];
+                        let j = this.vertices[k][1];
+                        new_grid = this.graph_path(i, j, visited_vertices, new_grid, new_vertices, dead_cells)
+                    }
+            
+                    // check if dead cells appear
+                    let keys = dead_cells.keys();
+                    let values = dead_cells.values();
+                    for(let l = 0; l<dead_cells.size; l++){
+                        let t = values.next().value;
+                        let key = keys.next().value;
+                        if ( t== 3){
+                             // key is 'x*this.width + y' for the cell (x, y)
+                            let x = Math.floor(key/this.width);
+                            let y = key % this.width;
+            
+                            new_grid[x][y] = true;
+                            new_vertices.push([x, y])
+                            this.incr_pop();
+                        }
+                    }
+            
+                    // change the graph
+                    this.last_calculated_grid = new_grid;
+                    this.vertices = new_vertices; 
+            
+                    return new_grid;
+                }
+            
+                /* browse the graph of alive cells to determine the alive cells for the next state */
+                graph_path(i, j, visited_vertices, grid, vertices, dead_cells){
+                    
+                    // we don't traverse a same related components twice
+                    if (!visited_vertices[i*this.width + j]){
+                        let neighbours = this.get_neighbours(i, j);
+                        
+                        // determine the number of living neighbour cells of grid[i][j]
+                        let nb_alive_neighbours = this.get_nb_alive_cells(neighbours);
+            
+                        // the cell stay alive
+                        if (nb_alive_neighbours == 2 || nb_alive_neighbours == 3) {
+                            grid[i][j] = true;
+                            vertices.push([i, j])
+                        // the cell dies
+                        }else{
+                            this.decr_pop();
+                        }
+                        visited_vertices[i*this.width + j] = true;
+            
+                        // determine the number of living cells around dead cells
+                        for(let k = 0; k<neighbours.length; k++){
+                            let x = neighbours[k][0];
+                            let y = neighbours[k][1];   
+                            // the neighbour cell is dead 
+                            if(!(this.last_calculated_grid[x][y])){
+                                if(dead_cells.has(x*this.width+y)){
+                                    dead_cells.set(x*this.width+y, dead_cells.get(x*this.width+y)+1)
+                                }else{
+                                    dead_cells.set(x*this.width+y, 1)
+                                }
+                            // the neighbour cell is alive
+                            }else{
+                                // we continue the browse of the graph
+                                this.graph_path(x, y, visited_vertices, grid, vertices, dead_cells);
+                            }
+                        }
+                    }
+                    return grid;
+                } 
+            } 
+
+
+            function menu(){     //menu() is the function used onload of the page to create the menu
+                document.getElementById('game-container').style.display= 'none';
+                const bodym = document.getElementById("body");
+                divm = document.createElement("div");
+                divm.id = "divmenu";
+                bodym.appendChild(divm);
+                
+                //Creating a div to explain the rules 
+                const rules = document.createElement('div')
+                rules.id = 'rules-modal'
+                const rulesContent = document.createElement('p')
+                rulesContent.id = 'rules-content'
+                
+                //Description of the game
+                const introText = document.createElement("p");
+                introText.innerText = "The Game of Life is a simulation where cells on a grid evolve over generations. Each cell is either alive or dead, and its state depends on its neighbors. It is based on 2 simple and basic rules:";
+                    //A list that contain the simple rules of the game
+                const ulist = document.createElement('ul');
+                const rule1 = document.createElement('li');
+                rule1.innerText = "A living cell (colored black) stays alive with 2 or 3 living neighbors.";
+                ulist.appendChild(rule1);
+                const rule2 = document.createElement('li');
+                rule2.innerText = "A dead cell comes to life with exactly 3 neighbors.";
+                ulist.appendChild(rule2);
+
+                const outroText = document.createElement("p");
+                outroText.innerText = "You can create your initial population by clicking on the cells in the grid and see the evolition. I suggest you to start with 3, 4 or 5 straight line. You can also choose one of the pre-defined initial population below the grid. ";
+                rulesContent.appendChild(introText);
+                rulesContent.appendChild(ulist);
+                rulesContent.appendChild(outroText);
+                const closeButton = document.createElement("button");
+                closeButton.innerText = "Begin!";
+                closeButton.addEventListener("click", () => {
+                    rules.style.display = "none";
+                });
+                rulesContent.appendChild(closeButton);
+
+                rules.appendChild(rulesContent);
+                bodym.appendChild(rules);
+
+                fieldsetm = document.createElement("fieldset");
+                fieldsetm.id = "menuleft1";
+                fieldsetm.style = "width:300px;height:200px;display:flex; flex-direction:column; justify-content:space-around;background-color: lightblue;";
+                divm.appendChild(fieldsetm);
+                legendm = document.createElement("legend");
+                legendm.style = "font-size: 40px";
+                legendm.innerText = "Grid size :";
+                fieldsetm.appendChild(legendm);
+
+                for (let i=1; i<4; i++){
+                    div = document.createElement("div");
+                    div.style = "font-size: 30px;";
+                    input = document.createElement("input");
+                    input.type = "radio";
+                    input.id = `${i*50}`;
+                    input.name = "taille";
+                    input.value = `${i*50}`;
+                    if (i==1){      //initially the 50x50 size is checked
+                        input.checked = true;
+                    }
+                    div.appendChild(input);
+                    label = document.createElement("label");
+                    label.for = `${i*50}`;
+                    label.innerText = `${i*50}x${i*50}`;
+                    div.appendChild(label);
+                    fieldsetm.appendChild(div);
+                }
+
+                titlem = document.createElement("h1");
+                titlem.innerText = "Game of Life";
+                titlem.id = "menucenter1";
+                titlem.style = "font-size:60px; text-align:center";
+                divm.appendChild(titlem);
+
+                tablem = document.createElement("table");
+                tablem.border = "1";
+                tablem.id = "menucenter2";
+                tablem.style = "border-collapse:collapse; align-item:center;";
+                for (let i=0; i<10; i++){
+                    tr = document.createElement("tr");
+                    for (let j=0; j<10; j++){
+                        td = document.createElement("td");
+                        td.id = `${i},${j}`;
+                        td.style = "background-color: white;height:50px;width:50px";
+                        tr.appendChild(td);
+                        td.addEventListener("click", function(e){
+                            change(`${i},${j}`);
+                        })
+                    }
+                    tablem.appendChild(tr);
+                }
+
+                principalGrid = document.createElement("div")
+                principalGrid.id = 'container';
+                principalGrid.appendChild(tablem)
+                //divm.appendChild(tablem);
+
+                buttonm = document.createElement("button");
+                buttonm.id = "menucenter3";
+                buttonm.style = "height: 100px; width: 200px; font-size:50px;font-weight: bold;border-radius: 30px;";
+                buttonm.addEventListener("click", play);
+                buttonm.innerText = "Play !";
+                divm.appendChild(buttonm);
+
+                //Adding div with some example of initial population
+                divbutton = document.createElement('div');
+                divbutton.id = "menucenter4";
+                // coordinates and file path to the image
+                const tab = [   [ "4,4", "4,5", "4,6", "5,3", "5,4", "5,5"],
+                                [ "3,4", "3,5", "4,3", "4,5", "5,3", "5,5", "6,4"],
+                                [ "5,3", "5,4", "6,3", "6,4", "3,5", "3,6", "4,5", "4,6"],
+                                [ "3,3", "3,4", "3,5", "3,6", "4,2", "4,6", "5,6", "6,2", "6,5"],
+                                [ "2,1", "2,3", "3,3", "4,5", "5,5", "5,7", "6,5", "6,7", "6,8", "7,7"],] 
+                const images = ['crapeau.png', 'graine.png', 'balise.png', 'rampeur.png', 'hard.png']
+                
+                for(let i=0; i<5; i++){
+                    picbutton =document.createElement("button");
+                    //Adding an image in the button
+                    let picture = document.createElement('img');
+                    picture.src = images[i];
+                    picture.alt = images[i].slice(0,-4);
+                    picture.style = "width: 40px; height: 40px; margin-right: 10px;";
+                    picbutton.appendChild(picture)
+                    picbutton.id = "menucenter5";
+                    // We will erase the actual grid and change it with the one in the picture
+                    picbutton.addEventListener("click", function(){
+                        resetInitialGrid();
+                        loadPredefinedGrid(tab[i])});
+                    divbutton.appendChild(picbutton);
+                }
+                // Creating an additionnal button to erase all the cells in our population
+                buttonReset = document.createElement("button");
+                buttonReset.addEventListener("click", resetInitialGrid);
+                buttonReset.innerText = "Reset";
+                divbutton.appendChild(buttonReset);
+
+                // Adding the buttons to the same division as the Grid
+                principalGrid.appendChild(divbutton)
+                divm.appendChild(principalGrid)
+            }
+
+            let tblecentral = new Array;        //tblecentral is the initial 10*10 table of true and false
+            for (let i=0;i<10; i++){
+                let rows = new Array;
+                for (let j=0;j<10;j++){
+                    rows.push(false);
+                }
+                tblecentral.push(rows);
+            }
+
+            function change(k){     //change() is the function used to change the color of the table tiles when clicked, and change their true or false value in tblecentral
+                    if (document.getElementById(k).style.backgroundColor=="white"){
+                        document.getElementById(k).style.backgroundColor = "black";
+                    } else if (document.getElementById(k).style.backgroundColor=="black"){
+                        document.getElementById(k).style.backgroundColor = "white";
+                    }
+                    tblecentral[k[0]][k[2]]= !tblecentral[k[0]][k[2]];
+            }
+
+            //The following question will replace the initial population to a predefine one
+            function resetInitialGrid() {
+                // Change all cells in white
+                for (let i = 0; i < tblecentral.length; i++) {
+                    for (let j = 0; j < tblecentral[i].length; j++) {
+                        const cellId = `${i},${j}`;
+                        const cell = document.getElementById(cellId);
+                        if (cell)
+                            cell.style.backgroundColor = "white";
+                    }
+                }
+                // Change all the values of tblecentral in "false"
+                for (let i = 0; i < tblecentral.length; i++) {
+                    for (let j = 0; j < tblecentral[i].length; j++) {
+                        tblecentral[i][j] = false;
+                    }
+                }
+            }
+
+            function loadPredefinedGrid(ids) {
+            ids.forEach((id) => {
+                change(id);
+            });
+            console.log("Updated grid and table:", tblecentral);
+        }
+
+
+            // Fonction for assign class to cells
+            function getCellClass(cell) {
+                if (cell) { // if true  return 'black'
+                    return 'black'; 
+                } else {
+                    return 'white'; // return 'white' if false
+                }
+            }
+
+            // Fonction for generating a HTML grid from a table of TRUE/FLASE
+            function createGrid(gridData) {
+                const table = document.createElement('table');
+                for (const row of gridData) { //  loop to iterate over rows
+                    const tr = document.createElement('tr'); // Create a new row
+                    for (const cell of row) { //  loop to iterate over cells
+                        const td = document.createElement('td'); // Create a new cell
+                        td.className = getCellClass(cell); // Assign class based on cell value
+                        td.style.height = (20 * 50) / document.querySelector("input[name=taille]:checked").value + "px"; // Set cell height dynamically
+                        tr.appendChild(td); // Add cell to the current row
+                    }
+                    table.appendChild(tr); // Add the row to the table
+                }
+                return table;
+            }
+
+            // Fonction aim to update grid 
+            function updateGrid(game) {
+                const tableContainer = document.getElementById('table-container');
+                tableContainer.innerHTML = ''; // delete present grid
+                console.log(game);
+                const table = createGrid(game.grid); // Create a new html grid
+                tableContainer.appendChild(table); // Add the grid in container 
+
+                // update generation and population(stat)
+                document.getElementById("population").textContent = game.get_population();
+                document.getElementById("generation").textContent = game.state;
+            }
+
+            // Listener for the button ">"
+            document.getElementById('button-next').addEventListener('click', function () {
+                if (isPlaying) Play_Pause(); // Pause if the game is in automatic mode
+                if (game.get_population()==0) {
+                    alert("No more possible moves. Please return to menu");
+                }
+                game.nextGrid(); // Generate the next grid
+                updateGrid(game); // Update the displayed grid
+            });
+
+
+            // Listener for the button "<"
+            document.getElementById('button-before').addEventListener('click', function () {
+                if (isPlaying) Play_Pause(); // Pause if the game is in automatic mode
+                console.log("--- Previous ---");
+                grid = game.previousGrid(); // last grid
+                if (grid != null){
+                    updateGrid(game); // Update the displayed grid
+                }
+            });
+            // Listener for the button "Retour"
+            document.getElementById("button-retour").addEventListener('click',function (){
+                if (isPlaying) Play_Pause(); // Pause if the game is in automatic mode
+                    console.log("--- Back to menu ---")
+                    document.getElementById('game-container').style.display= 'none'; //hide the game 
+                    document.getElementById('divmenu').style.display = 'block';  //display menu
+            })
+            // Listener for the PLAY/PAUSE button
+            document.getElementById('button-play').addEventListener('click', Play_Pause);
+            
+            
+
+            //This part of code consist to set up a loop while to let the game start itself without interaction with user and also able to interactive with user once clic button >,< or Retour
+            let isPlaying = false; // state show that game is running or not
+            const sleep = ms => new Promise(resolve => setTimeout(resolve, ms)); //sleep
+            // focntion for button PLAY/Pause
+            async function Play_Pause() {
+                const playButton = document.getElementById('button-play');
+
+                if (!isPlaying) {
+                    // If the game is not running, start it
+                    isPlaying = true;
+                    playButton.textContent = "PAUSE"; // Change button text to "PAUSE"
+
+                    // Start the game loop
+                    while (isPlaying) {
+                        // Check if the game can continue
+                        if (game.get_population()==0) {
+                            alert("No more possible moves. Please return to menu");
+                            isPlaying = false; // Stop the game
+                            playButton.textContent = "PLAY"; // Reset the button to PLAY
+                            break; // Exit the loop
+                        }
+                        // Update the game state
+                        game.nextGrid(); // Generate the next grid
+                        updateGrid(game); // Update the displayed grid
+                        document.getElementById('generation').textContent = parseInt(document.getElementById('generation').textContent) + 1; // Increment the generation counter
+
+                        // Wait for 1 second before the next iteration
+                        await sleep(500);
+                    }
+                } 
+                else {
+            // If the game is running, pause it
+            isPlaying = false; // Stop the game loop
+            playButton.textContent = "PLAY"; // Change button text to "PLAY"
+            }
+        }
+
+            //let game = new Game();
+            let game = null;
+
+            function play(){       //play() is the function used to erase the menu and display the game itself
+                let istrue = false;
+                for (let i in tblecentral){
+                    for (let j in tblecentral[i]){
+                        if (tblecentral[i][j]){
+                            istrue = true;
+                        }
+                    }
+                }
+                if (!istrue){       //player can confirm to continue without initial population, otherwise stops the function play
+                    var cont = confirm("No initial population, continue nonetheless?");
+                    if (!(cont)){
+                        return null;
+                    }
+                }
+                let taille = document.querySelector("input[name=taille]:checked").value;        //taille contains the chosen size of the grid of the game
+                let tbledim = new Array;        //tbledim is the upscaled table of true and false in the size chosen in the parameters
+
+                for (let i=0;i<taille; i++){
+                    let rows = new Array;
+                    for (let j=0;j<taille;j++){
+                        rows.push(false);
+                    }
+                    tbledim.push(rows);
+                }
+
+                let init_population = 0;
+                for (let i=0;i<10;i++){
+                    for (let j=0;j<10;j++){
+                        if (tblecentral[i][j]){
+                            tbledim[(taille/2)-5+i][(taille/2)-5+j]=true;
+                            init_population = init_population + 1;
+                        }
+                    }
+                }
+
+                // game.width = taille;
+                // game.height = taille;
+                // game.grid = tbledim;
+                // game.init_pop = init_population;
+                // game.population = init_population;
+                game = new Game(taille, taille, tbledim, init_population);
+
+                this.parentElement.style.display = "none";
+                document.getElementById('game-container').style.display= 'block';
+                // Initialisation : Affiche une grille au chargement de la page
+                updateGrid(game);
+                console.log(game);
+            }
+        </script>
+    </footer>
+</html>
+
+
